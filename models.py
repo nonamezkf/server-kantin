@@ -1,3 +1,4 @@
+from datetime import date
 import datetime
 
 from peewee import *
@@ -19,7 +20,7 @@ class OrangTua(BaseModel):
 	join_at = DateTimeField(default=datetime.datetime.now())
 
 class Anak(BaseModel):
-	orangtua = ForeignKeyField(OrangTua, backref='anaks')
+	orangtua_id = ForeignKeyField(OrangTua, backref='anaks')
 	nama = TextField()
 	username = CharField()
 	role = TextField()
@@ -37,21 +38,22 @@ class Admin(BaseModel):
 	no_tlp = SmallIntegerField()
 
 class Karyawan(BaseModel):
-	admin = ForeignKeyField(Admin, backref='karyawans')
+	admin_id = ForeignKeyField(Admin, backref='karyawans')
 	nama = TextField()
 	email = CharField()
 	password = CharField()
-	no_tlp = SmallIntegerField()
+	no_tlp = CharField()
 
 class PesananSiswa(BaseModel):
-	anak = ForeignKeyField(Anak, backref='pesanansiswas')
+	anak_id = ForeignKeyField(Anak, backref='pesanansiswas')
 	totalPembayaran = IntegerField()
-	ttl_pemesanan = DateTimeField(default=datetime.datetime.now())
+	ttl_pemesanan = DateField(default=datetime.date.today())
 
 class DetailPesanan(BaseModel):
-	pesanansiswa = ForeignKeyField(PesananSiswa, backref='detailpesanan')
+	pesanansiswa_id = ForeignKeyField(PesananSiswa, backref='detailpesanan')
 	kuantitas = SmallIntegerField()
 	harga = IntegerField()
+	namaproduk = TextField()
 
 def create_tables():
     with database:
