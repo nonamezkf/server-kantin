@@ -5,18 +5,18 @@ from hashlib import sha256
 
 import datetime
 from datetime import date
+import ast
 
 import sqlite3
 
 from peewee import *
 
+import pd
+
 app = Flask(__name__)
 api = Api(app)
 
 app.config['SECRET_KEY'] = 'LKANCNHkjhasd123hb34gv5y3245vu2vvd'
-
-
-
 
 DATABASE = SqliteDatabase('dummy.db')
 
@@ -32,7 +32,7 @@ class OrangTua(BaseModel):
 	ttl = DateField('%d-%m-%Y')
 	alamat = TextField()
 	email = CharField()
-	no_tlp = SmallIntegerField()
+	no_tlp = CharField()
 	join_at = DateTimeField(default=datetime.datetime.now())
 
 class Anak(BaseModel):
@@ -43,7 +43,7 @@ class Anak(BaseModel):
 	password = CharField()
 	kelas = CharField()
 	alamat = TextField()
-	no_tlp = SmallIntegerField()
+	no_tlp = CharField()
 	saldo = IntegerField()
 	tgl_lahir = DateField()
 
@@ -52,14 +52,14 @@ class Admin(BaseModel):
 	nama = TextField()
 	email = CharField()
 	password = CharField()
-	no_tlp = SmallIntegerField()
+	no_tlp = CharField()
 
 class Karyawan(BaseModel):
 	admin_id = ForeignKeyField(Admin, backref='karyawans')
 	nama = TextField()
 	email = CharField()
 	password = CharField()
-	no_tlp = SmallIntegerField()
+	no_tlp = CharField()
 
 class PesananSiswa(BaseModel):
 	anak_id = ForeignKeyField(Anak, backref='pesanansiswas')
@@ -68,7 +68,7 @@ class PesananSiswa(BaseModel):
 
 class DetailPesanan(BaseModel):
 	pesanansiswa_id = ForeignKeyField(PesananSiswa, backref='detailpesanan')
-	kuantitas = SmallIntegerField()
+	kuantitas = CharField()
 	harga = IntegerField()
 	namaproduk = TextField()
 
@@ -169,7 +169,7 @@ class Karyawans(Resource):
 		form_password = parserAmbilData.get('password')
 
 		save = Karyawan.create(
-			admin = id_admin,
+			admin_id = id_admin,
 			nama = form_nama,
 			email = form_email,
 			no_tlp = int(form_no_tlp),
@@ -211,7 +211,7 @@ class Karyawanbyid(Resource):
 		form_no_tlp = parserAmbilData.get('no_tlp')
 		form_password = parserAmbilData.get('password')
 
-		query = Karyawan.update({Karyawan.admin:id_admin, Karyawan.nama:form_nama, Karyawan.email:form_email, Karyawan.no_tlp:form_no_tlp, Karyawan.password:form_password,}).where(Karyawan.id == id)
+		query = Karyawan.update({Karyawan.admin_id:id_admin, Karyawan.nama:form_nama, Karyawan.email:form_email, Karyawan.no_tlp:form_no_tlp, Karyawan.password:form_password,}).where(Karyawan.id == id)
 		query.execute()
 
 	def delete(self, id):
@@ -235,7 +235,6 @@ class Loginkaryawan(Resource):
 			hash_password = sha256(form_password.encode('utf-8')).hexdigest()
 			karyawan = Karyawan.get((Karyawan.email == form_email) & (Karyawan.password == hash_password))
 		except Karyawan.DoesNotExist:
-			
 			return {"message":"gagal"}
 		else:
 			karyawan_id = session['karyawan_id'] = karyawan.id
@@ -249,6 +248,52 @@ class Loginkaryawan(Resource):
 			# print(session['admin_id'])
 			# result = "sukses"
 			return {"message":"sukses", "auth_karyawan":auth_karyawan}
+
+	    # parserData = reqparse.RequestParser()
+		# parserData.add_argument('username')
+		# parserData.add_argument('password')
+
+		# parserAmbilData = parserData.parse_args()
+		# form_username = parserAmbilData.get('username')
+		# form_password = parserAmbilData.get('password')
+
+		# try :
+		# 	hash_password = sha256(form_password.encode('utf-8')).hexdigest()
+		# 	admin = Admin.get((Admin.nama == form_username) & (Admin.password == hash_password))
+		# except Admin.DoesNotExist:
+		# 	return {"message":"gagal"}
+		# else:
+		# 	admin_id = session['admin_id'] = admin.id
+		# 	auth_user = {
+		# 		"admin_id": admin_id
+		# 	}
+
+		# 	# print(auth_user)
+		# 	# auth_user_admin(admin)
+		# 	# print(session['admin_id'])
+		# 	# result = "sukses"
+		# 	return {"message":"sukses", "auth_user":auth_user}
+
+
+class SearchHistoriPesanan(Resource):
+	def get(self):
+		parserData = reqparse.RequestParser()
+		parserData.add_argument('forminput')
+
+		parserAmbilData = parserData.parse_args()
+		form_input = parserAmbilData.get('forminput')
+
+		query = PesananSiswa.select().where(PesananSiswa.id == form_input)
+
+		datas = []
+
+		for row in query:
+			datas.append({
+				'id':row.id,
+				'totalPembayaran':row.totalPembayaran,
+				'ttl_pemesanan':row.ttl_pemesanan.strftime("%d/%B/%Y")
+			})
+		return jsonify(datas)
 
 
 # Resource Api logout Karyawan
@@ -364,7 +409,7 @@ class SearchDataByName(Resource):
 		parserAmbilData = parserData.parse_args()
 		form_option = parserAmbilData.get('formoption')
 
-		# query untuk menampilkan histori pesanan
+		# query untuk menampilkan histori pesanan berdasarkan nama anak
 		queryHistoriPesanan = PesananSiswa.select().join(Anak).where(Anak.orangtua_id == orangtua_id, Anak.nama.contains(form_option) )
 		datas = []
 		for row in queryHistoriPesanan:
@@ -418,9 +463,11 @@ class Detailpesanan(Resource):
 		# query menampilkan tanggal
 		queryTanggal = PesananSiswa.get(PesananSiswa.id == id_pesanan).ttl_pemesanan.strftime("%d/%B/%Y")
 
+		queryTotalPembelian = PesananSiswa.get(PesananSiswa.id == id_pesanan).totalPembayaran
 
 
-		return {"detail" : datas, "namanya": namanya, "ttl_pemesanan":queryTanggal}
+
+		return {"detail" : datas, "namanya": namanya, "ttl_pemesanan":queryTanggal, "totalPembayaran":queryTotalPembelian}
 
 class Dataanak(Resource):
 	def get(self, orangtua_id):
@@ -442,9 +489,6 @@ class Dataanak(Resource):
 class Dataorangtua(Resource):
 	def get(self, orangtua_id):
 		query = OrangTua.select().where(OrangTua.id == orangtua_id)
-
-		zero = 0
-
 		datas = []
 		for data in query:
 			datas.append({
@@ -454,8 +498,259 @@ class Dataorangtua(Resource):
 				"no_tlp" : data.no_tlp,
 				"email" : data.email
 				})
+		return jsonify(datas)
+
+
+class SemuaHistoriPesanan(Resource):
+	def get(self):
+		query = PesananSiswa.select().order_by(PesananSiswa.ttl_pemesanan.desc())
+		datas = []
+		for row in query:
+			datas.append({
+				'id':row.id,
+				'totalPembayaran':row.totalPembayaran,
+				'ttl_pemesanan':row.ttl_pemesanan.strftime("%d/%B/%Y")
+			})
+		return jsonify(datas)
+
+
+class Product(Resource):
+	def get(self):
+		rows = pd.products.select()
+		datas=[]
+		for row in rows:
+			datas.append({
+				'id':row.id,
+				'name':row.name,
+				'desc':row.desc,
+				'price':row.price,
+				'quantity':row.quantity,
+				'category':row.category,
+				'image':row.image
+			})
+		return jsonify(datas)
+
+
+
+class ProductSearch(Resource):
+	def get(self):
+		parserData = reqparse.RequestParser()
+		parserData.add_argument('formoption')
+
+		parserAmbilData = parserData.parse_args()
+		form_option = parserAmbilData.get('formoption')
+
+		rows = pd.products.select().where(pd.products.category.contains(form_option))
+
+		datas=[]
+		for row in rows:
+			datas.append({
+				'id':row.id,
+				'name':row.name,
+				'desc':row.desc,
+				'price':row.price,
+				'quantity':row.quantity,
+				'category':row.category,
+				'image':row.image
+			})
 
 		return jsonify(datas)
+
+
+
+class Getproductbyid(Resource):
+	def get(self, product_id):
+
+		nama = pd.products.get(pd.products.id == product_id).name
+		harga =  pd.products.get(pd.products.id == product_id).price
+		last_pesanansiswa = PesananSiswa.select().order_by(PesananSiswa.id.desc()).get().id
+
+		
+		# harga = query.price
+		# datas = []
+
+		# for row in query :
+		# 	datas.append({
+		# 		'name':row.name,
+		# 		'harga':row.price
+		# 		})
+
+		return {"nama":nama, "harga":harga, "pesanansiswa_id":last_pesanansiswa}
+
+
+
+
+
+class Order(Resource):
+	def post(self):
+		parserData = reqparse.RequestParser()
+		parserData.add_argument('id_siswa')
+		parserData.add_argument('harga_total')
+		parserData.add_argument('detail_pesanan')
+
+
+		parserAmbilData = parserData.parse_args()
+		id_siswa = parserAmbilData.get('id_siswa')
+		harga_total = parserAmbilData.get('harga_total')
+		detail_pesanan = parserAmbilData.get('detail_pesanan')
+
+
+		detail_pesanan_dict = ast.literal_eval(detail_pesanan)
+		detail_pesanan_list = list(detail_pesanan_dict.values())
+
+		# detail_pesanan = detail_pesanan_list
+
+		
+
+		
+
+		# print(type(detail_pesanan))
+
+		# testing
+		# last_pesanansiswa = PesananSiswa.select().order_by(PesananSiswa.id.desc()).get()
+		# last_id = last_pesanansiswa.id
+		# print(last_id)
+		try:
+			getidsiswa = Anak.get(Anak.id == id_siswa).id
+		except Anak.DoesNotExist:
+			return {"messages" : "id anak tidak ditemukan"}
+
+		if getidsiswa == True:
+			harga_total_int = int(harga_total)
+			saldo_anak_byId = Anak.get(Anak.id == id_siswa).saldo
+			if saldo_anak_byId >= harga_total_int:
+
+
+				# Mengurangi saldo
+				def decrement_saldo(harga_total, saldo):
+					try:
+				        # Mengurangi stok produk
+						Anak.update(saldo=Anak.saldo - harga_total).where(Anak.id == id_siswa).execute()
+						# print("saldo berhasil dikurangi.")
+					except Exception as e:
+						print(e)
+				
+				decrement_saldo(harga_total_int, saldo_anak_byId) 		
+
+				pesanan_siswa = PesananSiswa.create(
+					anak_id= id_siswa,
+					totalPembayaran=harga_total,
+					tanggal_pemesanan= date.today()
+				)
+
+
+				# query untuk mendapatkan id terakhir pesanansiswa
+				last_pesanansiswa = PesananSiswa.select().order_by(PesananSiswa.id.desc()).get().id
+
+				# merubah type data str ke dict
+				detail_pesanan_str = detail_pesanan
+				detail_pesanan_dict = eval(detail_pesanan_str)
+
+				# pendefinisian ke type data dic
+				detail_pesanan = detail_pesanan_dict
+
+				# merubah dari type dict ke list
+				detail_pesanan_list = []
+
+				# looping untuk menjumlah 
+				for key, value in detail_pesanan.items():
+				    detail_pesanan_list.append({'pesanansiswa_id': last_pesanansiswa, **value})
+
+
+				for data_dict in detail_pesanan_list:
+					DetailPesanan.create(**data_dict)
+
+				# Coba coba
+
+				# def simpan_data_dummy(data):
+				#     # Membuat objek PesananSiswa baru
+				    
+
+				#     # Menyimpan data detail pesanan
+
+				#     for key in detail_pesanan:
+				# 		data_order = detail_pesanan[key]
+				# 		for data_detail_pesanan in data_order:
+				# 		    # Admin diambil dari nama class table 
+				# 		    DetailPesanan.create(**data_detail_pesanan)
+
+				#     # for key, value in data['detail_pesanan']:
+				#     #     DetailPesanan.create(
+				#     #         pesanansiswa_id=last_id,
+				#     #         kuantitas=value['kuantitas'],
+				#     #         harga=value['harga'],
+				#     #         namaproduk=value['namaproduk']
+				#     #     )
+
+				# simpan_data_dummy(parserAmbilData)
+
+				# for key in detail_pesanan:
+				# 	data_order = detail_pesanan[key]
+				# 	for data_detail_pesanan in data_order:
+				# 	    # Admin diambil dari nama class table 
+				# 	    DetailPesanan.create(**data_detail_pesanan)
+
+				# for detail_id, detail_data in detail_pesanan:
+				# 	DetailPesanan.create(
+			    #         pesanansiswa_id= last_id,
+			    #         kuantitas=detail_data['kuantitas'],
+			    #         harga=detail_data['harga'],
+			    #         namaproduk=detail_data['namaproduk']
+		        # )
+
+				# for key in detail_pesanan:			
+				# 	print(str(detail_pesanan[key]))
+					# dataPesanan["pesanansiswa_id"] = last_id 
+
+				# save = PesananSiswa.create(
+				# 	anak_id = id_siswa,
+				# 	totalPembayaran = harga_total,
+				# 	ttl_pemesanan = date.today(),
+				# )
+
+				# for key in detail_pesanan:
+				# 	last_pesanansiswa = PesananSiswa.select().order_by(PesananSiswa.id.desc()).get()
+				# 	last_id = last_pesanansiswa.id
+				# 	# dataPesanan = int(detail_pesanan[key])
+				# 	# dataPesanan["pesanansiswa_id"] = last_id 
+
+				# for key in detail_pesanan:
+				# 	data_order = detail_pesanan[key]
+				# 	for data_detail_pesanan in data_order:
+				# 	    # Admin diambil dari nama class table 
+				# 	    DetailPesanan.create(**data_detail_pesanan)
+			else:
+				messages = "Saldo tidak cukup"
+		else:
+			messages = "Id siswa tidak ditemukan"
+		return {'messages': messages}
+
+
+class Ceksaldo(Resource):
+	def get(self):
+		parserData = reqparse.RequestParser()
+		parserData.add_argument('id_siswa')
+
+
+		parserAmbilData = parserData.parse_args()
+		id_siswa = parserAmbilData.get('id_siswa')
+
+
+		query = Anak.select().where(Anak.id == id_siswa)
+
+		datas = []
+
+		for data in query:
+			datas.append({
+				"nama" : data.nama,
+				"kelas" : data.kelas,
+				"saldo" : data.saldo
+				})
+
+		return jsonify(datas)
+
+
+
 
 
 @app.route('/')
@@ -490,8 +785,6 @@ api.add_resource(Logoutorangtua, '/api/logoutorangtua/', endpoint = 'logoutorang
 
 # Histori Semua Pesanan Anak Berdasarkan Id Orang Tua
 api.add_resource(Historipesanan, '/api/historipesanans/<int:orangtua_id>', endpoint='historipesanans')
-# api.add_resource(Karyawanbyid, '/api/karyawanbyid/<int:id>', endpoint='karyawanbyid') 
-
 
 # Menampilkan jumlah total saldo dari anak
 api.add_resource(Totalsaldoanaks, '/api/totalsaldoanaks/<int:orangtua_id>', endpoint='totalsaldoanaks')
@@ -505,7 +798,7 @@ api.add_resource(NamaAnak, '/api/namaanaks/<int:orangtua_id>', endpoint='namaana
 # Menampilkan data berdasarkan nama anak
 api.add_resource(SearchDataByName, '/api/searchdatabynama/<int:orangtua_id>', endpoint='searchdatabynama')
 
-# menampilkan detail pesanan
+# Menampilkan detail pesanan
 api.add_resource(Detailpesanan, '/api/detailpesanan/<int:id_pesanan>', endpoint='detailpesanan')
 
 # menampilkan data anak yang dimiliki orang tua
@@ -514,8 +807,26 @@ api.add_resource(Dataanak, '/api/dataanak/<int:orangtua_id>', endpoint='dataanak
 # Menampilkan data orang tua 
 api.add_resource(Dataorangtua, '/api/dataorangtua/<int:orangtua_id>', endpoint='dataorangtua')
 
+# Search histori pesanan by id
+api.add_resource(SearchHistoriPesanan, '/api/searchHistoripesananbyid/', endpoint='searchHistoribyid')
 
+# Menampilkan semua histori pesanan
+api.add_resource(SemuaHistoriPesanan, '/api/semuahistoripesanan/', endpoint='semuahistoripesanan')
 
+# Menampilkan semua produk
+api.add_resource(Product, '/api/productall/', endpoint='productall')
+
+# Menampilkan produk berdasarkan kategori
+api.add_resource(ProductSearch, '/api/productsearch/', endpoint='productsearch')
+
+# Mendapatkan product berdasarkan id untuk keranjang
+api.add_resource(Getproductbyid, '/api/productbyid/<int:product_id>', endpoint='productbyid')
+
+# Membuat pesanan
+api.add_resource(Order, '/api/order/', endpoint='order')
+
+# Menampilkan saldo beserta nama dan kelas anak 
+api.add_resource(Ceksaldo, '/api/ceksaldo/', endpoint='ceksaldo')
 
 
 

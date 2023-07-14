@@ -1,12 +1,12 @@
 from models import *
 
-# adminsource = [
-#     {'role': 'superuser', 'nama': 'admin', 'email': 'kantin@gmail.com ', 'password': '123', 'no_tlp': '081333444555'}
-# ]
+adminsource = [
+    {'role': 'superuser', 'nama': 'admin', 'email': 'kantin@gmail.com ', 'password': '123', 'no_tlp': '081333444555'}
+]
 
-# for data_dict in adminsource:
-#     # Admin diambil dari nama class table 
-#     Admin.create(**data_dict)
+for data_dict in adminsource:
+    # Admin diambil dari nama class table 
+    Admin.create(**data_dict)
 
 
 # pesanansiswa = [
